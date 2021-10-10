@@ -8,27 +8,33 @@
 #include <thread>
 #include <vector>
 #include <fstream>
-#include <iterator>
 #include <ctime>
 ////////////////////////////////
 #define PORT 80
 #define HOST "127.0.0.1"
 
 void erro(const char *str,UINT exitcode);
-void erro(const char *str);
-void init(std::vector<char> buff,char (&verb)[5],char (&pth)[200]);
-void parse(char (&mtype)[50],char (&type)[20],char (&pth)[200]);
-std::vector<char> loadfile(char (&pth)[200]);
+
+int init(std::vector<char> buff,char (&verb)[5],char (&pth)[20]);
+
+void parse(char (&type)[20],char (&pth)[20]);
+
+std::vector<char> loadfile(char (&pth)[20]);
+
 void sendata(SOCKET n_socket,char (&status_code)[4],char (&mtype)[50],std::vector<char> dataa);
-int get(SOCKET n_socket,char (&pth)[200]);
+
+int get(SOCKET n_socket,char (&pth)[20]);
+
 int post(SOCKET n_socket,char (&recvbuf)[0x1024]);
+
 int connection(SOCKET n_socket);
 
-//formaty: .html .gif .ico .css .js
-// resp on get i push
-// tylko o 24
 
-//g++ server.cc -o serwer.exe -lws2_32 -std=c++11 -pthread
+// formats: .html .gif .ico .css .js
+// respond on get and push
+// only at 24pm
+
+//g++ server.cc -o serwer.exe -lws2_32 -std=c++11
 
 
 int main(void)
@@ -75,14 +81,15 @@ int main(void)
 
 
 
-	while(1)
+	while(true)
 	{
 		time_t tt;
     	time(&tt);
     	tm TM = *localtime( &tt );
+		DWORD thr;
 
 
-		if (TM.tm_hour == 24)
+		if (TM.tm_hour != 24)
 		{
 
 			SOCKET AcceptSocket = accept(m_socket, NULL,NULL);
@@ -92,28 +99,26 @@ int main(void)
 		        WSACleanup();
 		        return 1;
 		    } else wprintf(L"Client connected.\n");
-		    //std::thread newConnection(connection,AcceptSocket);
-		    connection(AcceptSocket);
+			CreateThread(NULL, 0,(LPTHREAD_START_ROUTINE)connection,
+			(LPVOID)AcceptSocket, 0, &thr);
+
 		}
 
 
 
 	}
 
-	 
-
 	return 0;
-
-
 }
 
 
 int connection(SOCKET n_socket){
 
-	char recvbuf[0x1024];
-	int  recvbuflen = 0x1024;
+	const int  recvbuflen = 0x1024;
+
+	char recvbuf[recvbuflen];
 	bool req = false;
-	const char GET[4] = "GET";
+	const char GET[5]  = "GET ";
 	const char POST[5] = "POST";
 	
 	recv(n_socket,recvbuf,recvbuflen,0);
@@ -126,76 +131,68 @@ int connection(SOCKET n_socket){
 		finalbuf.push_back(recvbuf[i]);
 	}
 	if(!req){
-	   erro("Bad Request");
 	   closesocket(n_socket);
 	   return 3;
+	   ExitThread(0);
 	}
 
- 	char verb[5] = " ";
- 	char pth[200] = " ";
-
- 	init(finalbuf,verb,pth);
-
- 	int getorpost = 50;
-
- 	for (int i = 0,j=1; i < 4; ++i){
-
- 		if (verb[j] == GET[i])
- 		{
- 			getorpost++;
- 		}
-
- 		if (verb[j] == POST[i])
- 		{
- 			getorpost--;
- 		}
- 		j++;
- 		
- 	}
+ 	char verb[5] = "";
+ 	char pth[20] = "";
 
 
- 	if (getorpost == 46){
- 		post(n_socket,recvbuf);
- 		return 0;
- 	}
-
- 	if(getorpost != 53){
- 		closesocket(n_socket);
- 		return 3;
-
- 	}
+ 	if(init(finalbuf,verb,pth) == 3){
+	   closesocket(n_socket);
+	   return 3;
+	   ExitThread(0);
+	}
 
 
- 	get(n_socket,pth);
+	if (strcmp(verb,GET) == 0)
+	{
+		get(n_socket,pth);
+
+	}
+	else
+	{
+		verb[4] = '\0';
+		
+		if (strcmp(verb,POST) == 0){
+			post(n_socket,recvbuf);
+		}
+		else{
+			closesocket(n_socket);
+			return 3;
+			ExitThread(0);
+		}
 
 
+	}
 
 	return 0;
 }
 
 
-
 void erro(const char *str,UINT exitcode){
 	printf("%s\n",str);
 	ExitProcess(exitcode);
-}
-void erro(const char *str){
-	printf("%s\n",str);
+	ExitThread(0);
 }
 
-void init(std::vector<char> buff,char (&verb)[5],char (&pth)[200]){
+int init(std::vector<char> buff,char (&verb)[5],char (&pth)[20]){
 
+	memset(verb,0,5);
  	bool flag = true;
 	int itr = 0;
+	
  	for(auto x: buff){ 
- 		itr++;
  		if (flag)
  		{
- 			verb[itr] += x;
+			if(itr > sizeof(verb)) return 3;
+ 			verb[itr] = x;
  		}
  		else{
- 			
- 			pth[itr] += x;
+ 			if(itr > sizeof(pth)) return 3;
+ 			pth[itr] = x;
  			
  		}
  		if(x == ' ')
@@ -207,62 +204,43 @@ void init(std::vector<char> buff,char (&verb)[5],char (&pth)[200]){
  			flag = false;
  			itr = 0;
  			continue;
-
- 			
- 		}
- 		
-
+ 		}	
+		itr++;
  	}
-
+	return 0;
 }
 
-void parse(char (&mtype)[50],char (&type)[20],char (&pth)[200]){
-	if(pth[1] == '/' && pth[2] == ' '){
+void parse(char (&type)[20],char (&pth)[20]){
+	int x = 1;
+	int i;
+
+	if(pth[0] == '/' && pth[1] == ' '){
 
 		strcpy(pth,"index.html");
+		strcpy(type,".html"); 
+		return;
 
 	}
 	else{
-		bool frst = true;
-		int j = 0;
-		for (int i = 0; i < 200; ++i)
-		{
-			j++;
-			if (frst)
-			{
-				i--;
-				frst = false;
-				continue;
-			}
-			if (pth[i] == 0)
-			{
-				break;
-			}
-			pth[i] = pth[j];
 
+	for (i = 0; pth[i] != '\0'; ++i) {
+        	pth[i] = pth[x];
+			x = x + 1;
+   	 }
+
+	x = 0;
+	for (i = 0; pth[i] != '\0'; ++i) {
+		if (pth[i] == '.')
+		{
+			for (size_t y = i; pth[y] != '\0'; y++)
+			{
+				type[x] = pth[y];
+				x = x + 1;
+			}
 		}
+   	 }
 
 	}
-
-	int state = 0;
-	int itrto = 0; 
-	for (int i = 0; i < 200; ++i)
-	{
-
-		if (pth[i] == 0)
-		{
-			break;
-		}
-		if(pth[i] == '.'){
-			state = 2;
-
-		}
-		if(state == 2){
-			type[itrto++] += pth[i];
-		}
-
-	}  
-	
 
 }
 
@@ -297,10 +275,11 @@ int post(SOCKET n_socket,char (&recvbuf)[0x1024]){
 
 
  	closesocket(n_socket);
+	ExitThread(0);
  	return 0;
 
 }
-int get(SOCKET n_socket,char (&pth)[200]){
+int get(SOCKET n_socket,char (&pth)[20]){
 
 
 std::map<char*, char*> mime = {
@@ -314,11 +293,13 @@ std::map<char*, char*> mime = {
 	char mtype[50] = " ";
 	char type[20] = "";
 	char status_code[4] = "200";
-	parse(mtype,type,pth);
+	
+	parse(type,pth);
 	
 	std::vector<char> dataa = loadfile(pth);
 
-	//Check mime type 
+
+	//Check mime type
 	for (auto& x: mime) {
 		if (type[1] == x.first[1])
 		{
@@ -336,7 +317,7 @@ std::map<char*, char*> mime = {
 
 } 
 
-std::vector<char> loadfile(char (&pth)[200]){
+std::vector<char> loadfile(char (&pth)[20]){
 
     std::ifstream input(pth, std::ios::binary);
 
@@ -373,6 +354,7 @@ void sendata(SOCKET n_socket,char (&status_code)[4],char (&mtype)[50],std::vecto
 
 
 	closesocket(n_socket);
+	ExitThread(0);
 
 }
 
