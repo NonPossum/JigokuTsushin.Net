@@ -1,0 +1,27 @@
+﻿.MainDiv {
+    visibility: hidden;
+    text-align: center;
+    font-size: 30px;
+    padding-top: 1cm;
+}
+
+button {
+    -webkit-box-shadow: 0 8px 6px -6px black;
+    -moz-box-shadow: 0 8px 6px -6px black;
+    box-shadow: 0 8px 6px -6px black;
+}
+
+input {
+    box-shadow: 5px 5px black;
+}
+
+p {
+    padding-left: 1cm;
+    padding-top: 1cm;
+}
+
+#opener {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
